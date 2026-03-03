@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HRMO-SCANNER v5 (Sound & Vibrate)</title>
+    <script src="https://unpkg.com/html5-qrcode"></script>
+    <style>
+        body { font-family: 'Segoe UI', sans-serif; text-align: center; background-color: #f4f7f6; padding: 20px; transition: background-color 0.3s; }
+        #reader { width: 100%; max-width: 400px; margin: auto; border: 4px solid #007bff; border-radius: 15px; overflow: hidden; background: #000; }
+        .controls { margin: 10px 0; padding: 15px; background: white; border-radius: 10px; display: inline-block; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        #scanned-result { margin: 10px; font-weight: bold; font-size: 1.2rem; min-height: 40px; color: #333; }
+        table { width: 100%; max-width: 700px; margin: 20px auto; border-collapse: collapse; background: white; }
+        th, td { border: 1px solid #ddd; padding: 12px; text-align: left; }
+        th { background-color: #007bff; color: white; }
+        .btn-start { background-color: #28a745; color: white; padding: 18px 30px; border: none; cursor: pointer; border-radius: 10px; font-weight: bold; width: 100%; max-width: 400px; font-size: 18px; box-shadow: 0 4px 15px rgba(40, 167, 69, 0.3); }
+    </style>
+</head>
+<body>
+
+    <h2 style="color: #007bff;">HRMO-SCANNER v5</h2>
+
+    <div class="controls">
+        <label><b>MODE:</b></label>
+        <select id="status-select" style="padding: 10px; font-size: 16px; border-radius: 5px;">
+            <option value="IN">TIME IN</option>
+            <option value="OUT">TIME OUT</option>
+        </select>
+    </div>
+
+    <div id="reader"></div>
+    <button class="btn-start" id="start-btn" onclick="startScanner()">🚀 START CAMERA & FEEDBACK</button>
+    
+    <div id="scanned-result">Ready for scanning...</div>
+
+    <table>
+        <thead>
+            <tr><th>OFFICE-NAME</th><th>TIME</th><th>STATUS</th></tr>
+        </thead>
+        <tbody id="log-body"></tbody>
+    </table>
+
+    <script>
+        const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzc8ffvGpUbYvUJnOMgWdo7NrQujNDSoaqIYhniWs1oWhjTOjocQRwXQbVCUtB1Rq-0/exec"; 
+
+        let html5QrCode;
+        let isPaused = false;
+        let scannedList = new Set();
+        let audioCtx = null;
+
+        function playSound(freq, duration) {
+            if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.type = "sine";
+            osc.frequency.value = freq;
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + duration/1000);
+            osc.start();
+            osc.stop(audioCtx.currentTime + duration/1000);
+        }
+
+        async function startScanner() {
+  
+            if (navigator.vibrate) navigator.vibrate(50);
+            if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            
+            html5QrCode = new Html5Qrcode("reader");
+            try {
+                await html5QrCode.start({ facingMode: "environment" }, { fps: 20, qrbox: 250 }, onScanSuccess);
+                document.getElementById("start-btn").style.display = "none";
+            } catch (err) { alert("Error: " + err); }
+        }
+
+        function onScanSuccess(decodedText) {
+            if (isPaused) return;
+            isPaused = true;
+
+            const status = document.getElementById('status-select').value;
+            const resultDisplay = document.getElementById('scanned-result');
+            const time = new Date().toLocaleTimeString();
+            const scanKey = decodedText + "|" + status;
+
+            if (scannedList.has(scanKey)) {
+                resultDisplay.innerText = "⚠️ ALREADY SCANNED";
+                resultDisplay.style.color = "orange";
+                
+        
+                if (navigator.vibrate) navigator.vibrate([200, 100, 200]);
+                playSound(300, 400); 
+
+                setTimeout(() => { isPaused = false; }, 2000);
+                return; 
+            }
+
+            scannedList.add(scanKey);
+            
+          
+            if (navigator.vibrate) navigator.vibrate(200);
+            playSound(660, 150);
+
+         
+            document.body.style.backgroundColor = "#d4edda";
+            setTimeout(() => { document.body.style.backgroundColor = "#f4f7f6"; }, 500);
+
+            let rowHtml = `<tr><td>${decodedText}</td><td>${time}</td><td style="color: green;"><b>${status} OK</b></td></tr>`;
+            document.getElementById('log-body').insertAdjacentHTML('afterbegin', rowHtml);
+            
+            resultDisplay.innerText = "✅ RECORDED: " + decodedText;
+            resultDisplay.style.color = "green";
+
+            
+            fetch(SCRIPT_URL, { method: 'POST', mode: 'no-cors', body: JSON.stringify({ id: decodedText, status: status, time: time }) });
+
+            
+            setTimeout(() => { 
+                isPaused = false; 
+                resultDisplay.innerText = "Ready for next scan..."; 
+                resultDisplay.style.color = "black";
+            }, 3000); 
+        }
+    </script>
+</body>
+</html>
